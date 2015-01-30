@@ -1,5 +1,12 @@
+# tempfiles
 *~
 *.pyc
-config.xml
-mailerror.log
+*.log
 *.pid
+
+# local config
+config.py
+
+# virtualenv
+/*env
+/*ENV

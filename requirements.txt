@@ -1,0 +1,5 @@
+IMAPClient==0.12
+argparse==1.2.1
+html2text==2014.12.29
+wsgiref==0.1.2
+-e git+https://github.com/normanr/xmpppy.git@cae7df03e53b471e03fab7aa2f9e8efc5747d689#egg=xmpppy-master
