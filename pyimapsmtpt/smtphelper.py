@@ -1,5 +1,9 @@
 # coding: utf8
 
+## conjdig-ish
+_patch_smtp_logging = True
+
+## ...
 import logging
 import functools
 import smtplib
@@ -8,13 +12,54 @@ import email.message
 
 
 _log = logging.getLogger(__name__)
-log = functools.partial(_log.log, 2)
+_dumpall_log_level = 2
+log = functools.partial(_log.log, _dumpall_log_level)
+
+
+#######
+## Stuff for smtp logging patching
+#######
+
+
+## http://www.electricmonk.nl/log/2011/08/14/redirect-stdout-and-stderr-to-a-logger-in-python/
+class StreamToLogger(object):
+   """
+   Fake file-like stream object that redirects writes to a logger instance.
+   """
+   def __init__(self, logger, log_level=logging.INFO):
+      self.logger = logger
+      self.log_level = log_level
+      self.linebuf = ''
+ 
+   def write(self, buf):
+      for line in buf.rstrip().splitlines():
+         self.logger.log(self.log_level, line.rstrip())
+
+
+_smtp_logging_patched = False
+
+
+#######
+## ...
+#######
 
 
 def get_smtpcli(config):
+
+    ## Hacks
+    global _smtp_logging_patched
+    if _patch_smtp_logging and not _smtp_logging_patched:
+        _smtp_logging_patched = True
+        if logging.getLogger().level <= logging.DEBUG:
+            smtplib.SMTP.debuglevel = 2
+        smtplib.stderr = StreamToLogger(
+            logging.getLogger('SMTP'),
+            log_level=_dumpall_log_level)
+
     ## TODO?: more persistent connections? memoize & reconnects?
     log("SMTP connecting")
     smtpcli = smtplib.SMTP(config.smtp_server)
+    smtpcli.set_debuglevel(1)
     log("SMTP EHLO")
     smtpcli.ehlo()
     if config.smtp_starttls:
@@ -55,6 +100,10 @@ def send_email(config, to, message, from_=None, auto_headers=None):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=1)
+    try:
+        import pyaux.runlib
+        pyaux.runlib.init_logging(level=1)
+    except Exception:
+        logging.basicConfig(level=1)
     import config
     send_email(config, 'hoverhell@gmail.com', 'Subject: test\n\nsubj.')
