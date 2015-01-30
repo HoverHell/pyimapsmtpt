@@ -11,8 +11,22 @@ configFiles = ['config.py', '/etc/pyimapsmtpt.conf.py']
 configFile = None
 
 
+#######
 ## Things you might want to override anyway
+#######
+
 ## TODO?: in the transport mode, make those inputable-at-registration?
+
+## The short client identifier that will be used to mark messages as 'seen by
+## this client'.
+## Beware, if your inbox is large this might work weirdly.
+## TODO: at some 'initialisation' point, mark all inbox messages with this or
+## somehow save the value for 'always filter for messages from the <current
+## timestamp>'
+imap_client_id = 'pyit1'
+
+## NOTE: gmail incapabilities:
+## https://support.google.com/mail/answer/78761?hl=en
 imap_server = "imap.gmail.com:993"
 imap_ssl = True
 smtp_server = "smtp.gmail.com:587"
