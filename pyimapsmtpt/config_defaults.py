@@ -7,8 +7,8 @@ See `config_example.py` for the values that must be overridden.
 """
 
 ## Where to look for the local config (which is required)
-configFiles = ['config.py', '/etc/pyimapsmtpt.conf.py']
-configFile = None
+config_files = ['config.py', '/etc/pyimapsmtpt.conf.py']
+config_file = None
 
 
 #######
@@ -34,25 +34,25 @@ smtp_starttls = True
 ## TODO?: support the other smtp stuff
 
 
+## NOTE: `sed -r 's/([a-z])([A-Z])/\1_\l\2/g'` relative to pymailt.
+
 host = ""
-discoName = "Mail Transport"
+disco_name = "Mail Transport"
 pid = ""
 
-mainServer = "127.0.0.1"
+main_server = "127.0.0.1"
 port = "5347"
 
-useComponentBinding = False
-useRouteWrap = False
-saslUsername = ""
+use_component_binding = False
+use_route_wrap = False
+sasl_username = ""
 
-debugFile = ""
+debug_file = ""
 
-dumpProtocol = False
-
-smtpServer = "127.0.0.1"
+dump_protocol = False
 
 domains = []
-fallbackToJid = ''
+fallback_to_jid = ''
 
 # 'plaintext' or 'html2text' or 'html'
-preferredFormat = 'plaintext'
+preferred_format = 'plaintext'

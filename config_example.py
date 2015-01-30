@@ -5,7 +5,7 @@ Copy this file into `config.py` (or `/etc/pyimapsmtpt.conf.py`) and edit.
 """
 
 ## Not required but might be convenient
-from config_defaults import *
+from pyimapsmtpt.config_defaults import *
 
 jid = "mail.xmppserver.my"
 mainServerJID = "xmppserver.my"

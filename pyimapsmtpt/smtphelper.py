@@ -105,5 +105,6 @@ if __name__ == '__main__':
         pyaux.runlib.init_logging(level=1)
     except Exception:
         logging.basicConfig(level=1)
-    import config
+    from pyimapsmtpt.confloader import get_config
+    config = get_config()
     send_email(config, 'hoverhell@gmail.com', 'Subject: test\n\nsubj.')

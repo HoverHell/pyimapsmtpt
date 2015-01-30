@@ -23,10 +23,10 @@ from threading import Event
 
 from .common import to_bytes
 
-_log = logging.getLogger('pyimaptst_%s' % (client_id,))
+_log = logging.getLogger(__name__)
 
 
-seen_flag = r'Seen_by_%s' % (client_id,)
+seen_flag_tpl = r'Seen_by_%(client_id)s'
 
 
 #######
@@ -123,6 +123,8 @@ class Worker(object):
 
     def __init__(self, config, cli_kwa=None):
         self.config = config
+        self.seen_flag = seen_flag_tpl % dict(
+            client_id=config.imap_client_id)
         if cli_kwa is None:
             cli_kwa = config_to_clikwa(config)
         self.cli_kwa = cli_kwa
@@ -212,12 +214,6 @@ class Worker(object):
         handler = signal.getsignal(signal.SIGTERM)
         signal.signal(signal.SIGINT, handler)
 
-        def ipdb_on_sig(signal, frame):
-            import ipdb
-            ipdb.set_trace()
-
-        # signal.signal(ipdb_on_sig, handler)
-
     def run_loop(self):
         self.working = True
         while self.working:
@@ -251,7 +247,7 @@ class Worker(object):
         self.log.info("sync()")
         cli = cli or self.get_client(name='cli', cached=True)
         ## TODO: filter out by internaldate > now - some_max_val ( SINCE ... )
-        msgids = cli.search('(UNKEYWORD %s)' % (seen_flag,))
+        msgids = cli.search('(UNKEYWORD %s)' % (self.seen_flag,))
         ## Hopefully, the newest will be the last in the list.
         assert msgids == sorted(msgids)
         msgids = list(reversed(msgids))
@@ -272,7 +268,7 @@ class Worker(object):
                     self.handle_msg(
                         msg_content, msgid=msgid, msgids=msgids, message=message)
                 ## NOTE: if handle_msg excepts, this will not be done, this way.
-                resp = cli.add_flags(msgid, seen_flag)
+                resp = cli.add_flags(msgid, self.seen_flag)
                 if debug:
                     dbgres.append(dict(msgid=msgid, message=message, flag_resp=resp))
                 self.log.debug("add_flags resp: %r", resp)
@@ -296,11 +292,15 @@ class Worker(object):
 def main(args=None):
     if args is None:
         args = sys.argv[1:]
-    worker = Worker(cli_kwa)
+
+    from pyimapsmtpt.confloader import get_config
+    config = get_config()
+
+    worker = Worker(config=config)
+
     if args and 'mark_all' in args:
         return worker.mark_all_as_read()
 
-    # worker.run()
     worker.run_with_retry()
 
     return worker
@@ -314,7 +314,9 @@ if __name__ == '__main__':
         )
         main()
     except Exception:
-        _, _, sys.last_traceback = sys.exc_info()
-        import traceback; traceback.print_exc()
-        import ipdb
-        ipdb.pm()
+        if 'pm' in sys.argv:
+            _, _, sys.last_traceback = sys.exc_info()
+            import traceback; traceback.print_exc()
+            import pdb
+            pdb.pm()
+        raise
