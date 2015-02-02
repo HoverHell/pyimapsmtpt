@@ -21,7 +21,7 @@ import imaplib
 import imapclient
 from threading import Event
 
-from .common import to_bytes
+from .common import to_bytes, config_email_utf8
 
 _log = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ def config_to_clikwa(config):
     )
     return cli_kwa
 
-    
+
 def get_imapcli(username, password, server, port=None, cls=imapclient.IMAPClient, **kwa):
     imapcli = cls(server, port, **kwa)
 
@@ -121,7 +121,7 @@ class Worker(object):
     working = None
     cli = idle_cli = mark_all_cli = None
 
-    def __init__(self, config, cli_kwa=None):
+    def __init__(self, config, cli_kwa=None, mail_callback=None):
         self.config = config
         self.seen_flag = seen_flag_tpl % dict(
             client_id=config.imap_client_id)
@@ -133,6 +133,10 @@ class Worker(object):
         self.events_pending = Event()
 
         self.log = _log.getChild('Worker')
+
+        if mail_callback is None:
+            mail_callback = lambda *ar, **kwa: None
+        self.mail_callback = mail_callback
 
     def mark_all_as_seen(self, debug=True):
         cli = self.get_client(name='mark_all_cli')
@@ -189,8 +193,7 @@ class Worker(object):
     def pre_run(self, setup_signals=True, sockdbg=True):
         if setup_signals:
             self.setup_signals()
-        ## From pymailt. Not sure what it should do.
-        email.Charset.add_charset('utf-8', email.Charset.SHORTEST, None, None)
+        config_email_utf8()
         if sockdbg:
             _imaplib_add_id_logging(self.log)
 
@@ -285,8 +288,7 @@ class Worker(object):
         msg_content = to_bytes(msg_content)
         msg = email.message_from_string(msg_content)
 
-        ## XXXXXXXXXXXXXXXX: TODO.
-        print repr(msg_content)[:300]
+        self.mail_callback(msg, msg_content=msg_content)
 
 
 def main(args=None):
@@ -296,10 +298,13 @@ def main(args=None):
     from pyimapsmtpt.confloader import get_config
     config = get_config()
 
-    worker = Worker(config=config)
+    def mail_callback_dbg(msg, msg_content):
+        print "Message: ", repr(msg_content)[:300]
+
+    worker = Worker(config=config, mail_callback=mail_callback_dbg)
 
     if args and 'mark_all' in args:
-        return worker.mark_all_as_read()
+        return worker.mark_all_as_seen()
 
     worker.run_with_retry()
 
@@ -316,7 +321,8 @@ if __name__ == '__main__':
     except Exception:
         if 'pm' in sys.argv:
             _, _, sys.last_traceback = sys.exc_info()
-            import traceback; traceback.print_exc()
+            import traceback
+            traceback.print_exc()
             import pdb
             pdb.pm()
         raise

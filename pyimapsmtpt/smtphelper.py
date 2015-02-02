@@ -23,17 +23,17 @@ log = functools.partial(_log.log, _dumpall_log_level)
 
 ## http://www.electricmonk.nl/log/2011/08/14/redirect-stdout-and-stderr-to-a-logger-in-python/
 class StreamToLogger(object):
-   """
-   Fake file-like stream object that redirects writes to a logger instance.
-   """
-   def __init__(self, logger, log_level=logging.INFO):
-      self.logger = logger
-      self.log_level = log_level
-      self.linebuf = ''
- 
-   def write(self, buf):
-      for line in buf.rstrip().splitlines():
-         self.logger.log(self.log_level, line.rstrip())
+    """
+    Fake file-like stream object that redirects writes to a logger instance.
+    """
+    def __init__(self, logger, log_level=logging.INFO):
+        self.logger = logger
+        self.log_level = log_level
+        self.linebuf = ''
+
+    def write(self, buf):
+        for line in buf.rstrip().splitlines():
+            self.logger.log(self.log_level, line.rstrip())
 
 
 _smtp_logging_patched = False
@@ -99,7 +99,7 @@ def send_email(config, to, message, from_=None, auto_headers=None):
     smtpcli.close()
 
 
-if __name__ == '__main__':
+def main():
     try:
         import pyaux.runlib
         pyaux.runlib.init_logging(level=1)
@@ -108,3 +108,7 @@ if __name__ == '__main__':
     from pyimapsmtpt.confloader import get_config
     config = get_config()
     send_email(config, 'hoverhell@gmail.com', 'Subject: test\n\nsubj.')
+
+
+if __name__ == '__main__':
+    main()

@@ -12,6 +12,9 @@ config = None
 
 
 class Config(object):
+
+    _use_env = False
+
     def __init__(self, modules=None):
         self._modules = modules or []
 
@@ -21,6 +24,11 @@ class Config(object):
             return sup(self, val)
         except AttributeError as exc:
             exc_ = exc
+
+        if self._use_env:
+            res = os.environ.get('PIST_%s' % (val,))
+            if res:
+                return res
 
         for mod in reversed(self._modules):
             try:
@@ -39,6 +47,7 @@ def get_config(cached=True):
     import pyimapsmtpt.config_defaults as defaults
     modules = []
     config_file_candidates = defaults.config_files
+    config_file = None
     for candidate in config_file_candidates:
         if os.path.exists(candidate):
             try:
@@ -47,6 +56,7 @@ def get_config(cached=True):
                 print "ERROR: could not import %r: %r" % (candidate, exc)
                 continue
             modules.append(mod)
+            config_file = candidate
             break
 
     if not modules:
@@ -54,4 +64,7 @@ def get_config(cached=True):
                          " allowed loactions") % (defaults.__file__,))
 
     config = Config([defaults] + modules)
+    config.config_file = config_file
+    if config.use_env:
+        config._use_env = True
     return config
