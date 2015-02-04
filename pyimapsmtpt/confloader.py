@@ -59,7 +59,8 @@ def get_config(cached=True):
             config_file = candidate
             break
 
-    if not modules:
+    require_modules = not os.environ.get('NO_LOCAL_CONF_REQUIRED')
+    if not modules and require_modules:
         raise Exception(("User-overrides config is required. See %r for the"
                          " allowed loactions") % (defaults.__file__,))
 

@@ -73,13 +73,36 @@ xmpp_use_route_wrap = False
 # 'plaintext' or 'html2text' or 'html'
 preferred_format = 'plaintext'
 
+
+# Non-straightforward configuration for prepending some of the headers to the
+# XMPP message body
+prepend_headers = set(('subject', 'to'))  # also: '_always_to', 'from'
+
+
+# Even less straightforward, for optionally parsing out some email headers
+# from the received XMPP messages.
+# Set this to empty to disable this feature.
+# WARN: the default is somewhat wide-allowing.
+# For examples, see `tests/test_xmppbody_headers.py`
+# Rules:
+#  * For headers to be tried, all text lines before the first blank line
+#    should be header-like 'name: value'; otherwise everything is an email
+#    body.
+#  * First of the headers should always be first of the preparse_headers,
+#    otherwise an error is returned
+#  * All headers should be listed in preparse_headers (making it an
+#    allowed-headers list); otherwise an error is returned
+preparse_headers = ('subject', 'to', 'envelope-to')
+
+
 # If html2text is preferred, this configuration will be used for it
 html2text_strip = True
 html2text_bodywidth = 100  # h2t's own default is 78
 html2text_links_each_paragraph = 1  # h2t's own default is 0
 ## Whatever else thou want to set on it.
-## see `html2text.config` source (the generally needs to be lowercased)
+## see `html2text.config` source (the names generally need to be lowercased)
 html2text_etcetera = {}
+
 
 ## These two options, if not None, are used to override some values in the
 ## `logging` option when configuring the logging (for easier overriding)

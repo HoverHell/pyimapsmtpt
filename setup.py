@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf8
 
+from setuptools import setup
+
 version = "1.0.0"
 try:
     version = '%sgit%s' % (

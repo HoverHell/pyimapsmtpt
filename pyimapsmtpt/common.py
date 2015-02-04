@@ -6,6 +6,10 @@ import logging
 _log = logging.getLogger(__name__)
 
 
+class EventProcessed(Exception):
+    """ A special exception to end the current event processing """
+
+
 def to_bytes(val):
     if isinstance(val, unicode):
         return val.encode('utf-8')
@@ -59,3 +63,57 @@ def config_email_utf8():
         body_enc=None,
         ## Default: 'utf-8'
         output_charset=None)
+
+
+#######
+## Library-independence for JIDs
+#######
+
+def jid_to_data(jid):
+    """ ...
+
+    :param jid: xmpp.protocol.JID instance or jid_data or string
+    """
+    if isinstance(jid, dict):
+        assert 'node' in jid
+        assert 'domain' in jid
+        assert 'resource' in jid
+        return jid
+
+    if isinstance(jid, basestring):
+        return jid_string_to_data(jid)
+
+    ## Probably an xmpp.protocol.JID or equivalent
+    return dict(node=jid.node, domain=jid.domain, resource=jid.resource)
+
+
+def jid_data_to_string(jid_data, resource=True):
+    res = [
+        '%s@' % (jid_data['node'],) if jid_data['node'] else '',
+        jid_data['domain'],
+        '/%s' % (jid_data['resource'],) if resource else ''
+    ]
+    return ''.join(res)
+
+
+_re_optional = lambda s: r'(?:%s)?' % (s,)
+_jid_re = ''.join([
+    r'^',
+    _re_optional(r'(?P<node>[^@]+)@'),
+    r'(?P<domain>[^/@]+)',
+    _re_optional(r'/(?P<resource>.*)'),
+    '$'])
+# http://stackoverflow.com/a/1406200 - not perfectly strict but workable
+_jid_re_strict = r'''^(?:([^@/<>'\"]+)@)?([^@/<>'\"]+)(?:/([^<>'\"]*))?$'''
+
+
+def jid_string_to_data(jid_str, strict=True):
+    if strict:
+        m = re.match(_jid_re_strict, jid_str)
+    else:
+        m = re.match(_jid_re, jid_str)
+    if not m:
+        raise ValueError("Malformed JID", jid_str)
+    node, domain, resource = m.groups()
+    _pp = lambda v: v or ''
+    return dict(node=_pp(node), domain=_pp(domain), resource=_pp(resource))
