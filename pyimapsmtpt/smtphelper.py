@@ -99,6 +99,15 @@ def send_email(config, to, message, from_=None, auto_headers=None):
     smtpcli.close()
 
 
+class SMTPHelper(object):
+    def __init__(self, config, _manager=None):
+        self.config = config
+        self._manager = _manager
+
+    def send_email(self, to, message, from_=None, **kwa):
+        return send_email(self.config, to, message, from_=from_, **kwa)
+
+
 def main():
     try:
         import pyaux.runlib

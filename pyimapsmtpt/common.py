@@ -1,5 +1,6 @@
 # coding: utf8
 
+import re
 import logging
 
 
@@ -41,24 +42,24 @@ def get_html2text(config):
 
 
 def configure_logging(config):
-    import logging.config
+    import logging.config as logconf
     if config.log_level is not None:
         config.logging['root']['level'] = config.log_level
     if config.log_file is not None:
         config.logging['handlers']['main_file']['filename'] = config.log_file
         config.logging['root']['handlers'] = ['main_file']
-    logging.config.dictConfig(config.logging)
+    logconf.dictConfig(config.logging)
 
 
 def config_email_utf8():
     """ Apparently, for created email, this makes the email module avoid using
     base64 for encoding utf-8 email body parts. It also sets `output_charset`
     to None.  The exact reasons are still unclear.  """
-    import email
-    email.Charset.add_charset(
+    import email.charset
+    email.charset.Charset.add_charset(  # pylint: disable=no-member
         'utf-8',
         ## Default: 3
-        header_enc=email.Charset.SHORTEST,
+        header_enc=email.charset.SHORTEST,
         ## Default: 2
         body_enc=None,
         ## Default: 'utf-8'

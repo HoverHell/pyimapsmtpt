@@ -65,7 +65,7 @@ def get_config(cached=True):
                          " allowed loactions") % (defaults.__file__,))
 
     config = Config([defaults] + modules)
-    config.config_file = config_file
+    config.config_file = config_file  # pylint: disable=attribute-defined-outside-init
     if config.use_env:
         config._use_env = True
     return config

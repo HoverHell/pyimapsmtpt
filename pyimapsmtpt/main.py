@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf8
 """
-The Main Daemon file.
+The Main Daemon file (the glue).
 
 Subcomponents:
   confloader  # config source
@@ -14,37 +14,60 @@ Subcomponents:
   xmpptransport -> convertlayer -> smtphelper
 """
 import os
-import signal
+# import signal
 import sys
-import time
+# import time
 import logging
 
-from .common import get_config, configure_logging, config_email_utf8
+from .confloader import get_config
+from .common import configure_logging, config_email_utf8
 from .convertlayer import MailJabberLayer
+from .smtphelper import SMTPHelper
 
 
 _log = logging.getLogger(__name__)
 
 
-def PyIMAPSMTPtWorker(object):
+class PyIMAPSMTPtWorker(object):
+
+    layer = transport = imapc = None
+
     def __init__(self, config=None):
         if config is None:
             config = get_config()
 
         self.config = config
-        pass
+        raise Exception("TODO")
 
-    def pre_run():
+    def pre_run(self, instantiate=True):
+        config_email_utf8()
+
         if self.config.pidfile:
-            with open(config.pidfile, 'wb') as f:
+            with open(self.config.pidfile, 'wb') as f:
                 f.write(str(os.getpid()))
 
         configure_logging(self.config)
 
-    def post_run():
+        if instantiate:
+            self._instantiate()
+
+    def post_run(self):
         if self.config.pidfile:
-            if config.pidfile:
-                os.unlink(config.pidfile)
+            os.unlink(self.config.pidfile)
+
+    def _instantiate(self):
+        self.imapc = None  ## TODO
+        self.transport = None  ## TODO
+        self.layer = MailJabberLayer(
+            config=self.config, xmpp_sink=self.xmpp_sink,
+            smtp_sink=self.smtp_sink, _manager=self)
+        self.smtp = SMTPHelper(config=self.config, _manager=self)
+
+    def xmpp_sink(self, message_kwa, **kwa):
+        raise Exception("TODO")
+
+    def smtp_sink(self, to, msg, frm=None, **kwa):
+        raise Exception("TODO")
 
 
 def main():

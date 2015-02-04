@@ -1,14 +1,18 @@
 # coding: utf8
 
 import re
-import copy
+from copy import deepcopy
 import logging
 import email.message
+# pylint: disable=no-name-in-module
+# pylint: disable=import-error
 from email.MIMEText import MIMEText
 from email.Header import decode_header
+from email.Utils import parseaddr as email_parseaddr
+# pylint: enable=import-error
+# pylint: enable=no-name-in-module
 
-from . import common
-from .common import EventProcessed
+from .common import EventProcessed, get_html2text
 
 
 _log = logging.getLogger(__name__)
@@ -85,7 +89,7 @@ def extract_headers_from_body(body, preparse_headers):
 class MailJabberLayer(object):
     """ Logic of converting between email messages and xmpp messages both ways """
 
-    def __init__(self, config, xmpp_sink, smtp_sink):
+    def __init__(self, config, xmpp_sink, smtp_sink, _manager=None):
         """ ...
 
         :param xmpp_sink: function(dict) that accepts messages to be sent over XMPP
@@ -93,6 +97,7 @@ class MailJabberLayer(object):
         self.config = config
         self.xmpp_sink = xmpp_sink
         self.smtp_sink = smtp_sink
+        self._manager = _manager
 
     def xmpp_to_smtp(self, msg_data, **kwa):
         """ ...
@@ -101,7 +106,7 @@ class MailJabberLayer(object):
         raises EventProcessed
         """
         ## No text - not our business
-        if not body:
+        if not msg_data['body']:
             return
 
         jfrom = msg_data['frm']
@@ -117,6 +122,7 @@ class MailJabberLayer(object):
         charset = 'utf-8'
         body_bytes = msg_data['body'].encode(charset, 'replace')
         emsg = MIMEText(body_bytes, 'plain', charset)
+        subject = msg_data.get('subject')
         if subject:
             emsg['Subject'] = subject
         emsg['From'] = mfrom
@@ -124,22 +130,22 @@ class MailJabberLayer(object):
         for k, v in headers.items():
             emsg[k] = v
 
-        self.smtp_sink(msg, msg_data=msg_data)
+        self.smtp_sink(mto, emsg, frm=mfrom, _msg_data=msg_data, _layer=self)
 
     def preprocess_xmpp_incoming(self, msg_data, copy=True, **kwa):
         if copy:
-            msg_data = copy.deepcopy(msg_data)
+            msg_data = deepcopy(msg_data)
 
         try:
             res = extract_headers_from_body(
                 msg_data['body'], self.config.preparse_headers)
-        except ValueError:
-            return msg_data, {}
+        except ValueError as exc:
+            self.reply_with_error(exc.args[0], msg_data)  ## raises EventProcessed
 
         if res is None:
             return msg_data, {}
 
-        res_body, res_headers = res
+        res_body, res_headers = res[0], res[1]
         msg_data['body'] = res_body
         return msg_data, res_headers
 
@@ -151,15 +157,16 @@ class MailJabberLayer(object):
         if self.config.dump_protocol:
             _log.info('RECEIVING: %r', msg.as_string())
 
-        mfrom = email.Utils.parseaddr(msg['From'])[1]
+        mfrom = email_parseaddr(msg['From'])[1]
         ## XXXX: re-check this
         mto_base = msg['Envelope-To'] or msg['To']
-        mto = email.Utils.parseaddr(mto_base)[1]
+        mto = email_parseaddr(mto_base)[1]
 
         ## XXXX/TODO: use `Message-id` or similar for resource (and
         ##   parse it in incoming messages)? Might have to also send
         ##   status updates for those.
         jfrom = self.mfrom_to_jfrom(mfrom, msg=msg)
+        jto = self.mto_to_jto(mto, msg=msg)
 
         subject = msg_get_header(msg, 'subject')
 
@@ -171,7 +178,7 @@ class MailJabberLayer(object):
         jmsg_data = self.postprocess_xmpp_outgoing(
             jmsg_data, msg=msg, copy=False)
 
-        self.xmpp_sink(jmsg_data, emsg=msg)
+        self.xmpp_sink(jmsg_data, _email_msg=msg, _layer=self)
 
     def message_to_body(self, top_msg, **kwa):
         """ Get a suitable message body from the whole email message.
@@ -179,7 +186,7 @@ class MailJabberLayer(object):
         Returns a `dict(body=body)` """
         log = _log.debug
 
-        log("processing email message for body %s", repr(msg)[:60])
+        log("processing email message for body %s", repr(top_msg)[:60])
         msg_plain = msg_html = None
         submessages = top_msg.get_payload()
         for submessage in submessages:
@@ -195,7 +202,7 @@ class MailJabberLayer(object):
                 log("msg: found text/plain")
                 msg_plain = submessage
             else:
-                log("msg: unprocessed ctype %r" % (ctype,))
+                log("msg: unprocessed ctype %r", ctype)
 
         if self.config.preferred_format == 'plaintext':
             log("msg: preferring plaintext")
@@ -203,14 +210,14 @@ class MailJabberLayer(object):
         else:  # html2text or html
             log("msg: preferring html")
             msg = msg_html or msg_plain or top_msg
-            log("msg: resulting content_type is %r" % (msg.get_content_type(),))
+            log("msg: resulting content_type is %r", msg.get_content_type())
 
         charset = msg.get_charsets('utf-8')[0]
         body = msg.get_payload(None, True)
         body = unicode(body, charset, 'replace')
         # check for `msg.get_content_subtype() == 'html'` instead?
         if 'text/html' in msg.get_content_type():
-            if config.preferredFormat != 'html':
+            if self.config.preferred_format != 'html':
                 log("msg: doing html2text")
                 html2text = get_html2text(self.config)
                 body = html2text(body)
@@ -221,7 +228,7 @@ class MailJabberLayer(object):
 
     def postprocess_xmpp_outgoing(self, jmsg_data, msg, copy=True, **kwa):
         if copy:
-            jmsg_data = copy.deepcopy(jmsg_data)
+            jmsg_data = deepcopy(jmsg_data)
         prepend_headers = set(self.config.prepend_headers)
         body = jmsg_data['body']
         prepend = []
@@ -277,7 +284,7 @@ class MailJabberLayer(object):
     def mto_to_jto(self, mto, **kwa):
         """ Overridable method for converting email's 'To' to xmpp's 'to' """
         ## Currently, only one user is ever used.
-        return config.main_jid
+        return self.config.main_jid
         ## Static-mapping way:
         # tosplit = mto.split('@', 1)
         # jto = None
@@ -290,7 +297,7 @@ class MailJabberLayer(object):
 
     def jfrom_to_mfrom(self, jfrom, msg_data=None, **kwa):
         ## Currently, only one user is ever used.
-        return config.main_jid
+        return self.config.main_jid
         ## Static-mapping way:
         # node, domain = jfrom['node'], jfrom['domain']
         # fromsplit = jfrom['node'], jfrom['domain']
@@ -307,7 +314,7 @@ class MailJabberLayer(object):
         ## from the sink)
         body = 'ERROR: %s' % (error,)
         jmsg_data = dict(to=msg_data['frm'], frm=msg_data['to'], body=body)
-        self.xmpp_sink(jmsg_data)
+        self.xmpp_sink(jmsg_data, _layer=self)
         raise EventProcessed("replied with error")
 
 
@@ -322,21 +329,23 @@ def xmpp_sink_example(message_kwa, **kwa):
     assert 'body' in message_kwa
     from xmpp.browser import Message
     msg = Message(**message_kwa)
-    xmpp_transport.conn.send(msg)
+    kwa['xmpp_transport'].conn.send(msg)
 
 
-def smtp_sink_example(msg, **kwa):
+def smtp_sink_example(to, msg, frm=None, **kwa):
+    import smtplib
+    self = kwa['_layer']
     try:
         if self.config.dump_protocol:
             _log.info('SENDING: %r', msg.as_string())
         mailserver = smtplib.SMTP(self.config.smtpServer)
         if self.config.dump_protocol:
             mailserver.set_debuglevel(1)
-        mailserver.sendmail(mfrom, mto, msg.as_string())
+        mailserver.sendmail(frm, to, msg.as_string())
         mailserver.quit()
     except Exception as exc:
         _log.exception("SMTP sink error: %r", exc)
-        self.jabber.send(Error(event, ERR_RECIPIENT_UNAVAILABLE))
+        # self.jabber.send(Error(event, ERR_RECIPIENT_UNAVAILABLE))
 
 
 def test():

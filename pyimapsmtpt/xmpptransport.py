@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # coding: utf8
 
-import re
-import xmpp
 import logging
+import signal
+import time
+import xmpp
 from xmpp.browser import (
     ERR_ITEM_NOT_FOUND,
     ERR_JID_MALFORMED,
@@ -16,6 +17,9 @@ from xmpp.browser import (
 )
 
 from .common import jid_to_data
+
+
+_log = logging.getLogger(__name__)
 
 
 def event_to_data(event, add_event=True):
@@ -52,7 +56,6 @@ class Transport(object):
         if message_callback is None:
             message_callback = lambda *ar, **kwa: None
         self.message_callback = message_callback
-        config_email_utf8()
 
     def _mk_conn(self, config):
         sasl = bool(config.xmpp_sasl_username)
@@ -85,9 +88,10 @@ class Transport(object):
 
     def pre_run(self):
         self.setup_signals()
-        if not xmpp_transport.xmpp_connect():
-            _log.error("Could not connect to server, or password mismatch!")
-            sys.exit(1)
+        if not self.xmpp_connect():
+            _msg = "Could not connect to server, or password mismatch."
+            _log.error(_msg)
+            raise Exception(_msg)
 
     def run(self, pre_run=True):
         if pre_run:
@@ -100,11 +104,13 @@ class Transport(object):
     def run_loop(self):
         while self.online:
             try:
-                self.conn.Process(self.process_timeout)
+                conn = self.conn
+                conn.Process(  # pylint: disable=no-member
+                    self.process_timeout)
             except KeyboardInterrupt:
                 raise
             except IOError:
-                xmpp_transport.xmpp_reconnect()
+                self.xmpp_reconnect()
             except Exception as exc:
                 _log.error("xmpp process error: %r", exc)
 
@@ -116,9 +122,17 @@ class Transport(object):
     ## XMPP stuff
     #######
 
+    def send_message(self, msg, **kwa):
+        conn = self.conn
+        return conn.send(  # pylint: disable=no-member
+            msg, **kwa)
+
     def register_handlers(self):
-        self.conn.RegisterHandler('message', self.xmpp_message)
-        self.conn.RegisterHandler('presence', self.xmpp_presence)
+        conn = self.conn
+        conn.RegisterHandler(  # pylint: disable=no-member
+            'message', self.xmpp_message)
+        conn.RegisterHandler(  # pylint: disable=no-member
+            'presence', self.xmpp_presence)
         self.disco = Browser()
         self.disco.PlugIn(self.conn)
         self.disco.setDiscoHandler(
@@ -142,10 +156,10 @@ class Transport(object):
                 if ev_type == 'items':
                     return []
             else:
-                self.conn.send(Error(event, ERR_ITEM_NOT_FOUND))
+                self.send_message(Error(event, ERR_ITEM_NOT_FOUND))
                 raise NodeProcessed
         else:
-            self.conn.send(Error(event, ERR_JID_MALFORMED))
+            self.send_message(Error(event, ERR_JID_MALFORMED))
             raise NodeProcessed
 
     def xmpp_presence(self, con, event):
@@ -154,20 +168,20 @@ class Transport(object):
         ev_type = event.getType()
         to = event.getTo()
         if ev_type in ('subscribe', 'subscribed', 'unsubscribe', 'unsubscribed', 'unavailable'):
-            self.conn.send(Presence(to=fromjid, frm=to, typ=ev_type))
+            self.send_message(Presence(to=fromjid, frm=to, typ=ev_type))
         elif ev_type == 'probe':
-            self.conn.send(Presence(to=fromjid, frm=to))
+            self.send_message(Presence(to=fromjid, frm=to))
         elif ev_type == 'error':
             return
         else:
-            self.conn.send(Presence(to=fromjid, frm=to))
+            self.send_message(Presence(to=fromjid, frm=to))
 
     def xmpp_connect(self):
         connected = self.conn.connect((
             self.config.xmpp_main_server, self.config.xmpp_component_port))
         _log.info("connected: %r", connected)
         while not connected:
-            time.sleep(5)
+            time.sleep(5)  ## XXXX: ...
             connected = self.conn.connect((
                 self.config.xmpp_main_server, self.config.xmpp_component_port))
             _log.info("connected: %r", connected)
@@ -181,9 +195,9 @@ class Transport(object):
 
     def xmpp_reconnect(self):
         ## XXXX: ...Augh.
-        time.sleep(5)
+        time.sleep(5)  ## XXXX: ...
         if not self.conn.reconnectAndReauth():
-            time.sleep(5)
+            time.sleep(5)  ## XXXX: ...
             self.xmpp_connect()
 
     def xmpp_message_preprocess(self, event, con=None):
@@ -201,7 +215,7 @@ class Transport(object):
 
         ## Messages to nowhere are irrelevant
         if to.getNode() == '':
-            self.conn.send(Error(event, ERR_ITEM_NOT_FOUND))
+            self.send_message(Error(event, ERR_ITEM_NOT_FOUND))
             return
 
         ## XXXX: unclear. Probably makes sure an empty subject is presented as `None`

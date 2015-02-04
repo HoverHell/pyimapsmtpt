@@ -3,6 +3,7 @@
 *.pyc
 *.log
 *.pid
+*.egg-info
 
 # local config
 config.py
