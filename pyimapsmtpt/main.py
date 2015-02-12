@@ -23,10 +23,11 @@ import gevent
 ## ...
 
 import os
-# import signal
+import signal
 import sys
 # import time
 import logging
+from threading import Event
 
 from .confloader import get_config
 from .common import configure_logging, config_email_utf8, EventProcessed
@@ -43,10 +44,13 @@ class PyIMAPSMTPtWorker(object):
 
     layer = transport = imapc = None
 
+    joinall_timeout = 0.1
+
     def __init__(self, config=None):
         if config is None:
             config = get_config()
 
+        self.stop_event = Event()
         self.config = config
         self.children = {}
 
@@ -64,19 +68,17 @@ class PyIMAPSMTPtWorker(object):
         if instantiate:
             self._instantiate()
 
-    def post_run(self, stop_children=True):
-        if stop_children:
-            self.stop_children()
-        if self.config.pidfile:
-            os.unlink(self.config.pidfile)
-
     def setup_signals(self):
         signal.signal(signal.SIGINT, self.sighandler)
         signal.signal(signal.SIGTERM, self.sighandler)
 
-    def sighandler(self):
+    def sighandler(self, *ar, **kwa):
+        _log.info("sighandler called with %r %r", ar, kwa)
         if self.transport is not None:
-            self.transport.sighandler()
+            _log.info("Calling transport sighandler")
+            self.transport.sighandler(*ar, **kwa)
+        _log.info("Setting the stop event")
+        self.stop_event.set()
 
     def _instantiate(self):
         self.layer = MailJabberLayer(
@@ -95,7 +97,7 @@ class PyIMAPSMTPtWorker(object):
         self.layer.xmpp_to_smtp(msg_data, **kwa)
 
     def email_source(self, msg, **kwa):
-        self.layer.email_to_xmpp(msg, **kwa)
+        _try_with_pm(lambda: self.layer.email_to_xmpp(msg, **kwa))
 
     def xmpp_sink(self, msg_data, **kwa):
         ## [imapcli -> | xmpptransport -> ] convertlayer -> xmpptransport,
@@ -125,30 +127,52 @@ class PyIMAPSMTPtWorker(object):
         child = gevent.spawn(self.transport.run)
         self.children['transport'] = child
         ## The 'loop'
-        gevent.joinall(self.children.values())
+        _log.info("Waiting for the stop event")
+        self.stop_event.wait()
+        ## ...
+        self.stop_children()
+        _log.info("Waiting %rs for the children to quit", self.joinall_timeout)
+        gevent.joinall(self.children.values(), timeout=self.joinall_timeout)
 
-    def stop_children():
-        gevent.killall(self.children.values())
+    def post_run(self, kill_children=True):
+        if kill_children:
+            self.kill_children()
+        if self.config.pidfile:
+            os.unlink(self.config.pidfile)
+
+    def stop_children(self):
+        _log.info("Stopping children")
         if self.imapc is not None:
+            _log.info("Setting the imapc stop event")
             self.imapc.stop_event.set()
         if self.transport is not None:
+            _log.info("Setting the transport stop event")
             self.transport.online = False
 
+    def kill_children(self):
+        _log.info("Killing %d children", len(self.children))
+        gevent.killall(self.children.values())
+
+
+def _try_with_pm(_func_to_try_with_pm, *ar, **kwa):
+    """ Debug-helper to call ipdb.pm in case of an unhandled exception in the
+    function"""
+    try:
+        return _func_to_try_with_pm(*ar, **kwa)
+    except Exception:
+        _, _, sys.last_traceback = sys.exc_info()
+        import traceback; traceback.print_exc()
+        import ipdb; ipdb.pm()
+
+
 def main():
-    config = get_config()
-
+    if 'mark_all' in sys.argv:
+        config = get_config()
+        configure_logging(config)
+        imapcli = IMAPCli(config=config)
+        imapcli.mark_all_as_seen()
     worker = PyIMAPSMTPtWorker()
-
-    ## Probably should not be used
-    if config.auto_self_restart:
-        sys.stderr.write("WARNING: Self-restarting\n")
-        sys.stderr.flush()
-        args = [sys.executable] + sys.argv
-        if os.name == 'nt':
-            args = ["\"%s\"" % (a,) for a in args]
-        if config.dumpProtocol:
-            _log.info("Self-restarting with %r %r", sys.executable, args)
-        os.execv(sys.executable, args)
+    worker.run()
 
 
 if __name__ == '__main__':

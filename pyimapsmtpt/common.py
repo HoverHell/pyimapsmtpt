@@ -32,7 +32,7 @@ def get_html2text(config):
     ## postprocess
     def func(val, *ar, **kwa):
         res = obj.handle(val, *ar, **kwa)
-        if config.html2text_strip():
+        if config.html2text_strip:
             res = res.strip()
         return res
 
@@ -45,7 +45,7 @@ def configure_logging(config):
     import logging.config as logconf
     if config.log_level is not None:
         config.logging['root']['level'] = config.log_level
-    if config.log_file is not None:
+    if config.log_file:
         config.logging['handlers']['main_file']['filename'] = config.log_file
         config.logging['root']['handlers'] = ['main_file']
     logconf.dictConfig(config.logging)

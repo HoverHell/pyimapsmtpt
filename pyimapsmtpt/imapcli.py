@@ -2,17 +2,6 @@
 # coding: utf8
 
 
-#######
-## Monkeys running wild
-# import gevent.monkey
-# gevent.monkey.patch_all()
-## Could be sufficient, though:
-# gevent.monkey.patch_socket()
-## Or maybe can do this without gevent
-
-
-#######
-
 import sys
 import logging
 import email
@@ -254,7 +243,8 @@ class IMAPCli(object):
         ## TODO: filter out by internaldate > now - some_max_val ( SINCE ... )
         msgids = cli.search('(UNKEYWORD %s)' % (self.seen_flag,))
         ## Hopefully, the newest will be the last in the list.
-        assert msgids == sorted(msgids)
+        # assert msgids == sorted(msgids)
+        self.log.info("SEARCH returned %d msgids", len(msgids))
         msgids = list(reversed(msgids))
         if limit is True:
             msgids = msgids[:self.sync_msg_limit]  ## NOTE

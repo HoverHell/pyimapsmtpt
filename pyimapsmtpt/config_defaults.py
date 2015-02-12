@@ -114,17 +114,19 @@ logging = {
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
-            'format': '%(asctime)s: %(levelname)-13s: %(name)s: %(message)s',
+            'format': '%(asctime)s: %(levelname)-7s: %(name)s: %(message)s',
         },
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose'
+            'formatter': 'verbose',
         },
         'main_file': {
             'class': 'logging.handlers.WatchedFileHandler',
-            'formatter': 'verbose'
+            'formatter': 'verbose',
+            ## Set automatically from the `log_file` setting
+            'filename': '/dev/null',
         },
     },
     'loggers': {

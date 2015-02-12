@@ -186,18 +186,35 @@ class MailJabberLayer(object):
 
         self.xmpp_sink(jmsg_data, _email_msg=msg, _layer=self)
 
-    def message_to_body(self, top_msg, **kwa):
-        """ Get a suitable message body from the whole email message.
+    def message_part_select(self, top_msg, **kwa):
+        """ Get a suitable submessage from the whole email message.
 
-        Returns a `dict(body=body)` """
+        Returns an email.Message """
         log = _log.debug
 
         log("processing email message for body %s", repr(top_msg)[:60])
         msg_plain = msg_html = None
-        submessages = top_msg.get_payload()
+
+        if top_msg.is_multipart():
+            submessages = top_msg.get_payload()
+        else:
+            submessages = [top_msg]
+
         for submessage in submessages:
             if not submessage:
                 continue
+            if submessage.is_multipart():
+                ## Multipart within multipart. Yup, that happens. Thus, recurse.
+                ## XXX: re-check the recurse_limit logic
+                recurse_limit = kwa.setdefault('_recurse_limit', 5)
+                if recurse_limit <= 0:
+                    log("Recurse limit exceeded, not recursing")
+                    continue
+                xkwa = dict(kwa, _recurse_limit=recurse_limit - 1)
+                log("Recursing (limit %r)", xkwa['_recurse_limit'])
+                submessage = self.message_part_select(submessage, **xkwa)
+                if not submessage:
+                    continue
             ctype = submessage.get_content_type()
             # NOTE: 'startswith' might be nore correct, but this should
             # be okay too
@@ -216,7 +233,17 @@ class MailJabberLayer(object):
         else:  # html2text or html
             log("msg: preferring html")
             msg = msg_html or msg_plain or top_msg
-            log("msg: resulting content_type is %r", msg.get_content_type())
+
+        log("msg: resulting content_type is %r", msg.get_content_type())
+
+        return msg
+
+    def message_to_body(self, top_msg, **kwa):
+        msg = self.message_part_select(top_msg, **kwa)
+        ## TODO?: annotate the message with all multiparts' content-types
+        if not msg:
+            _log.warning("Could not extract anything from a message: %r", top_msg.as_string())
+            return
 
         charset = msg.get_charsets('utf-8')[0]
         body = msg.get_payload(None, True)

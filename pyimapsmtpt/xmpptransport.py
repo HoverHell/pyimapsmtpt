@@ -10,9 +10,10 @@ from xmpp.browser import (
     ERR_JID_MALFORMED,
     NS_COMMANDS,
     NS_VERSION,
-    NodeProcessed,
     Browser,
     Error,
+    Message,
+    NodeProcessed,
     Presence,
 )
 
@@ -73,8 +74,8 @@ class Transport(object):
             config.xmpp_component_jid, config.xmpp_component_port,
             debug=debug,
             sasl=sasl,
-            bind=config.use_component_binding,
-            route=config.use_route_wrap)
+            bind=config.xmpp_use_component_binding,
+            route=config.xmpp_use_route_wrap)
         return xmpp_connection
 
     #######
@@ -198,7 +199,7 @@ class Transport(object):
         self.register_handlers()
         _log.info("trying auth")
         connected = self.conn.auth(
-            self.config.xmpp_sasl_username or self.config.jid,
+            self.config.xmpp_sasl_username or self.jid,
             self.config.xmpp_secret)
         _log.info("auth return: %r", connected)
         return connected
