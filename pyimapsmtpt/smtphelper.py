@@ -9,6 +9,7 @@ import functools
 import smtplib
 import email
 import email.message
+import copy
 
 
 _log = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ def get_smtpcli(config):
     return smtpcli
 
 
-def send_email(config, to, message, from_=None, auto_headers=None):
+def send_email(config, to, message, from_=None, auto_headers=None, _copy=True):
     from_ = from_ or config.email_address
     if not hasattr(to, '__iter__'):
         to = [to]
@@ -81,6 +82,8 @@ def send_email(config, to, message, from_=None, auto_headers=None):
         message = email.message_from_string(message)
 
     if auto_headers is None:  ## No info, figure out
+        if _copy:
+            message = copy.deepcopy(message)
         ## At least make sure there's no newlines in the values:
         _escape_value = lambda s: s.replace('\n', r'\n')
 
@@ -94,9 +97,10 @@ def send_email(config, to, message, from_=None, auto_headers=None):
     message_str = message.as_string()
     smtpcli = get_smtpcli(config)
     log("SMTP sending from %r to %r:    %r", from_, to, message_str)
-    smtpcli.sendmail(from_, to, message_str)
+    res = smtpcli.sendmail(from_, to, message_str)
     log("SMTP close")
     smtpcli.close()
+    return message, res
 
 
 class SMTPHelper(object):

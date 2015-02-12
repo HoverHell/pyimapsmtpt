@@ -99,7 +99,13 @@ class MailJabberLayer(object):
         self.smtp_sink = smtp_sink
         self._manager = _manager
 
-    def xmpp_to_smtp(self, msg_data, **kwa):
+    def xmpp_to_smtp(self, *ar, **kwa):
+        try:
+            return self.xmpp_to_smtp_internal(*ar, **kwa)
+        except EventProcessed:
+            return
+
+    def xmpp_to_smtp_internal(self, msg_data, **kwa):
         """ ...
 
         callbacks self.smtp_sink
@@ -130,7 +136,7 @@ class MailJabberLayer(object):
         for k, v in headers.items():
             emsg[k] = v
 
-        self.smtp_sink(mto, emsg, frm=mfrom, _msg_data=msg_data, _layer=self)
+        return self.smtp_sink(mto, emsg, frm=mfrom, _msg_data=msg_data, _layer=self)
 
     def preprocess_xmpp_incoming(self, msg_data, copy=True, **kwa):
         if copy:
@@ -149,10 +155,10 @@ class MailJabberLayer(object):
         msg_data['body'] = res_body
         return msg_data, res_headers
 
-    def email_to_xmpp(self, msg):
+    def email_to_xmpp(self, msg, **kwa):
         if not isinstance(msg, email.message.Message):
             _log.warning("`msg` is not an email.message.Message: %r,  %r", type(msg), msg)
-        # msg = email.message_from_string(msg)
+            msg = email.message_from_string(msg)
 
         if self.config.dump_protocol:
             _log.info('RECEIVING: %r', msg.as_string())

@@ -14,7 +14,6 @@
 #######
 
 import sys
-import signal
 import logging
 import email
 import imaplib
@@ -109,10 +108,19 @@ def get_imapcli(username, password, server, port=None, cls=imapclient.IMAPClient
     return imapcli
 
 
-class Worker(object):
+class IMAPCli(object):
+    """ An even more generalised IMAP client, made around
+    imapclient.IMAPClient, that allows receiving all new messages in an
+    evented way.
+
+    It does not use any local state, relying instead on a per-message flag on
+    the IMAP server.
+
+    Stopping: `this.stop_event.set()`, wait a while.
+    """
 
     ## TODO: cleanup
-    sync_msg_limit = 3  ## NOTE.
+    sync_msg_limit = 15  ## NOTE.
     ## Timeout for the IDLE command
     ## 28 minutes, slightly below the RFC-recommended-maximum of 29 minutes
     idle_timeout = 28 * 60
@@ -132,7 +140,7 @@ class Worker(object):
         self.stop_event = Event()
         self.events_pending = Event()
 
-        self.log = _log.getChild('Worker')
+        self.log = _log.getChild(self.__class__.__name__)
 
         if mail_callback is None:
             mail_callback = lambda *ar, **kwa: None
@@ -175,8 +183,8 @@ class Worker(object):
         self.log.debug("imapcli(%r).select_folder: %r", name, resp)
         return cli
 
-    def run_with_retry(self):
-        self.pre_run()
+    def run_with_retry(self, **kwa):
+        self.pre_run(**kwa)
         self.retry_working = True
         while self.retry_working:
             try:
@@ -189,35 +197,29 @@ class Worker(object):
             except Exception as exc:
                 self.log.exception("run() error: %r", exc)
                 self.log.info("Re-`run()`ning")
+            finally:
+                self.log.info("run_with_retry iteration done")
+            if self.stop_event.isSet():
+                return
 
-    def pre_run(self, setup_signals=True, sockdbg=True):
-        if setup_signals:
-            self.setup_signals()
+    def pre_run(self, sockdbg=True, **kwa):
         config_email_utf8()
         if sockdbg:
             _imaplib_add_id_logging(self.log)
 
-    def run(self, pre_run=True):
+    def run(self, pre_run=True, **kwa):
         if pre_run:
-            self.pre_run()
-        cli = self.get_client()
+            self.pre_run(**kwa)
+        ## Prepare the imap clients here:
+        self.get_client()
         self.get_client(name='idle_cli')
+
         try:
-            # self.sync()  ## Not necessary
-            return self.run_loop()
+            return self.run_loop(**kwa)
         finally:
             self.log.debug("run() done")
-            # self.cli.close()
-            # cli.logout()
-            # self.log.debug("imapcli close done")
 
-    def setup_signals(self):
-        """ Set the sigint handler to the sigterm handler so that C-c in
-        the terminal works same as killing the daemon """
-        handler = signal.getsignal(signal.SIGTERM)
-        signal.signal(signal.SIGINT, handler)
-
-    def run_loop(self):
+    def run_loop(self, **kwa):
         self.working = True
         while self.working:
             if self.stop_event.isSet():
@@ -291,6 +293,7 @@ class Worker(object):
         self.mail_callback(msg, msg_content=msg_content)
 
 
+
 def main(args=None):
     if args is None:
         args = sys.argv[1:]
@@ -301,7 +304,7 @@ def main(args=None):
     def mail_callback_dbg(msg, msg_content):
         print "Message: ", repr(msg_content)[:300]
 
-    worker = Worker(config=config, mail_callback=mail_callback_dbg)
+    worker = IMAPCli(config=config, mail_callback=mail_callback_dbg)
 
     if args and 'mark_all' in args:
         return worker.mark_all_as_seen()

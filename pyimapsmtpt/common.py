@@ -56,7 +56,7 @@ def config_email_utf8():
     base64 for encoding utf-8 email body parts. It also sets `output_charset`
     to None.  The exact reasons are still unclear.  """
     import email.charset
-    email.charset.Charset.add_charset(  # pylint: disable=no-member
+    email.charset.add_charset(
         'utf-8',
         ## Default: 3
         header_enc=email.charset.SHORTEST,

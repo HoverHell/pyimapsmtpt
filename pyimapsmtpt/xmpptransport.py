@@ -39,6 +39,10 @@ def event_to_data(event, add_event=True):
 #######
 
 class Transport(object):
+    """ ...
+
+    Stopping: `this.online = False`, wait.
+    """
 
     online = 1
     process_timeout = 5
@@ -86,22 +90,23 @@ class Transport(object):
         _log.info('Signal handler called with signal %s', signum)
         self.online = 0
 
-    def pre_run(self):
-        self.setup_signals()
+    def pre_run(self, setup_signals=False, **kwa):
+        if setup_signals:
+            self.setup_signals()
         if not self.xmpp_connect():
-            _msg = "Could not connect to server, or password mismatch."
+            _msg = "Could not connect to XMPP server, or password mismatch."
             _log.error(_msg)
             raise Exception(_msg)
 
-    def run(self, pre_run=True):
+    def run(self, pre_run=True, **kwa):
         if pre_run:
-            self.pre_run()
+            self.pre_run(**kwa)
         try:
-            return self.run_loop()
+            return self.run_loop(**kwa)
         finally:
             pass
 
-    def run_loop(self):
+    def run_loop(self, **kwa):
         while self.online:
             try:
                 conn = self.conn
@@ -121,6 +126,11 @@ class Transport(object):
     #######
     ## XMPP stuff
     #######
+
+    def send_message_data(self, msg_data, **kwa):
+        ## TODO: support error events
+        msg = Message(**msg_data)
+        self.send_message(msg)
 
     def send_message(self, msg, **kwa):
         conn = self.conn
@@ -234,7 +244,7 @@ class Transport(object):
             return
 
         msg_kwa = dict(event_data, _event=event, _connection=con, _transport=self)
-        self.message_callback(**msg_kwa)
+        self.message_callback(msg_kwa)
 
 
 def main():
