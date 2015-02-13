@@ -7,6 +7,7 @@ import logging
 import email
 import imaplib
 import imapclient
+import json
 from threading import Event
 
 from .common import to_bytes, config_email_utf8
@@ -97,13 +98,10 @@ def get_imapcli(username, password, server, port=None, cls=imapclient.IMAPClient
     return imapcli
 
 
-class IMAPCli(object):
+class IMAPReceiver(object):
     """ An even more generalised IMAP client, made around
     imapclient.IMAPClient, that allows receiving all new messages in an
     evented way.
-
-    It does not use any local state, relying instead on a per-message flag on
-    the IMAP server.
 
     Stopping: `this.stop_event.set()`, wait a while.
     """
@@ -294,7 +292,7 @@ def main(args=None):
     def mail_callback_dbg(msg, msg_content):
         print "Message: ", repr(msg_content)[:300]
 
-    worker = IMAPCli(config=config, mail_callback=mail_callback_dbg)
+    worker = IMAPReceiver(config=config, mail_callback=mail_callback_dbg)
 
     if args and 'mark_all' in args:
         return worker.mark_all_as_seen()

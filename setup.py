@@ -48,6 +48,12 @@ setup_kwargs = dict(
         'html2text>=2014.12.29',
         'xmpppy',
     ],
+    extras_require={
+        ## Things that are useful to simply have around:
+        'recommended': [
+            'atomicfile',
+        ],
+    },
     dependency_links=[
         'git+https://github.com/normanr/xmpppy.git@cae7df03e53b471e03fab7aa2f9e8efc5747d689#egg=xmpppy',
     ],

@@ -34,7 +34,7 @@ from .common import configure_logging, config_email_utf8, EventProcessed
 from .convertlayer import MailJabberLayer
 from .smtphelper import SMTPHelper
 from .xmpptransport import Transport
-from .imapcli import IMAPCli
+from .imapcli import IMAPReceiver
 
 
 _log = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ class PyIMAPSMTPtWorker(object):
             smtp_sink=self.smtp_sink, _manager=self)
         self.smtp = SMTPHelper(
             config=self.config, _manager=self)
-        self.imapc = IMAPCli(
+        self.imapc = IMAPReceiver(
             config=self.config, mail_callback=self.email_source)
         self.transport = Transport(
             config=self.config,
@@ -169,7 +169,7 @@ def main():
     if 'mark_all' in sys.argv:
         config = get_config()
         configure_logging(config)
-        imapcli = IMAPCli(config=config)
+        imapcli = IMAPReceiver(config=config)
         imapcli.mark_all_as_seen()
     worker = PyIMAPSMTPtWorker()
     worker.run()
