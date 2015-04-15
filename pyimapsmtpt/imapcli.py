@@ -11,11 +11,9 @@ import json
 from threading import Event
 
 from .common import to_bytes, config_email_utf8
+from . import simpledb
 
 _log = logging.getLogger(__name__)
-
-
-seen_flag_tpl = r'Seen_by_%(client_id)s'
 
 
 #######
@@ -66,8 +64,6 @@ def _imaplib_add_id_logging(logger, cls=imaplib.IMAP4_SSL):
     cls.readline = _readline_dbg
 
 
-
-
 def config_to_clikwa(config):
     # client_id = 'pyit1'
     server = config.imap_server
@@ -116,26 +112,27 @@ class IMAPReceiver(object):
     working = None
     cli = idle_cli = mark_all_cli = None
 
-    def __init__(self, config, cli_kwa=None, mail_callback=None):
+    def __init__(self, config, cli_kwa=None, mail_callback=None, db=None):
+        """ ...
+
+        :param db: a persistent dict for state storage.
+        """
         self.config = config
-        self.seen_flag = seen_flag_tpl % dict(
-            client_id=config.imap_client_id)
         if cli_kwa is None:
             cli_kwa = config_to_clikwa(config)
         self.cli_kwa = cli_kwa
 
+        if db is None:
+            db = simpledb.SimpleDB(config.db_filename)
+        self.db = db
+
         self.stop_event = Event()
-        self.events_pending = Event()
 
         self.log = _log.getChild(self.__class__.__name__)
 
         if mail_callback is None:
             mail_callback = lambda *ar, **kwa: None
         self.mail_callback = mail_callback
-
-    def mark_all_as_seen(self, debug=True):
-        cli = self.get_client(name='mark_all_cli')
-        return self.sync(limit=None, process=False, debug=debug)
 
     def get_client(self, cli_kwa=None, name='cli', cached=False):
         """ ...
@@ -174,6 +171,8 @@ class IMAPReceiver(object):
         self.pre_run(**kwa)
         self.retry_working = True
         while self.retry_working:
+            if self.stop_event.isSet():
+                return
             try:
                 self.run(pre_run=False)
             except imaplib.IMAP4.abort as exc:
@@ -186,8 +185,6 @@ class IMAPReceiver(object):
                 self.log.info("Re-`run()`ning")
             finally:
                 self.log.info("run_with_retry iteration done")
-            if self.stop_event.isSet():
-                return
 
     def pre_run(self, sockdbg=True, **kwa):
         config_email_utf8()
@@ -216,11 +213,13 @@ class IMAPReceiver(object):
             self.work()
 
     def work(self):
-        """ Synopsis:
-        (re)start the IDLE (on the `idle_cli`). Sync (on the `cli`). Check the
-        IDLE results (wait for them).
+        """ Synopsis: TODO
         """
         self.log.info("work()")
+
+        last_uid = self.db.setdefault('last_uid', None)
+        cli = self.get_client(name='cli', cached=True)
+
         idle_cli = self.get_client(name='idle_cli', cached=True)
         self.log.info("work: idle_cli.idle()")
         idle_cli.idle()

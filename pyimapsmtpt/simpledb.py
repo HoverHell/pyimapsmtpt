@@ -1,6 +1,16 @@
 # coding: utf8
+""" ...
 
-import json
+Similar to `shelve`, but with save on each write (or delayed) rather than on
+close, with possible extras for atomicity (for consistency). Only writes the
+whole data, can use user-specified serialization.
+"""
+
+try:
+    import simplejson as json
+except Exception:
+    import json
+
 import functools
 import errno
 import logging
@@ -98,6 +108,42 @@ class SimpleDB(UserDict):
     popitem = _save_wrapped('popitem')
     update = _save_wrapped('update')
 
+    def setdefault(self, key, failobj=None):
+        try:
+            return self[key]
+        except KeyError:
+            self[key] = failobj
+            return failobj
+
+    ## Bonus functions: lazy get and setdefault
+
+    def fsetdefault(self, key, failfunc=lambda: None):
+        try:
+            return self[key]
+        except KeyError:
+            val = failfunc()
+            self[key] = val
+            return val
+
+    def fget(self, key, failfunc=lambda: None):
+        try:
+            return self[key]
+        except KeyError:
+            return failfunc()
+
+    def subdict(self, key):
+        """
+        A complicated helper.
+        As it is not called automatically, after loading the db you *might*
+        have to call this for each key with a dict where you want to have the
+        key changes saved.
+        """
+        val = Subdict(self.get(key) or {}, parent=self)
+        self[key] = val
+        return val
+
+    ## Some things that should not be done
+
     def copy(self):
         raise Exception("Bad idea")
 
@@ -116,6 +162,60 @@ class SimpleDB(UserDict):
         Separated from save() for easier overridability. """
         with self._open_cm(self._filename, 'wb') as fo:
             return self._ser['dump'](self.data, fo)
+
+
+def _child_wrapped(name):
+    """ A helper-wrapper for Subdict the call to dict(self, ...) and then
+    calls self.save() """
+
+    def _wrapped(self, *ar, **kwa):
+        method = getattr(dict, name)
+        res = method(self, *ar, **kwa)
+        self.save()
+        return res
+
+    _wrapped.__name__ = name
+    return _wrapped
+
+
+## This has to be a dict subclass (rather than UserDict) to be
+## JSON-serializable.  Note that using it is likely tricky.
+
+class Subdict(dict):
+    """ Another dict subclass that can call parent.save() on write.
+    Honours the '_nosave' attribute.
+
+    Example use:
+    >>> filename = '/tmp/._simpledb_subdict_test.json'
+    >>> db = SimpleDB(filename)
+    >>> key = 'child'
+    >>> import random
+    >>> val = random.getrandbits(31)
+    >>> ## Same as db.subdict(key)
+    >>> db[key] = Subdict(db.get(key) or {}, parent=db)
+    >>> db[key]['something'] = val
+    >>> db2 = SimpleDB(filename)
+    >>> assert db2[key]['something'] == val
+    """
+
+    _nosave = False
+
+    def __init__(self, child=None, parent=None, **kwargs):
+        self._parent = parent
+        dict.__init__(self, child or {}, **kwargs)
+
+    __setitem__ = _child_wrapped('__setitem__')
+    __delitem__ = _child_wrapped('__delitem__')
+    pop = _child_wrapped('pop')
+    popitem = _child_wrapped('popitem')
+    update = _child_wrapped('update')
+
+    def save(self):
+        if self._nosave:
+            return
+
+        if self._parent is not None:
+            self._parent.save()
 
 
 class SimpleDBDelayed(SimpleDB):

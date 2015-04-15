@@ -18,6 +18,8 @@ use_env = True  ## Allow overriding some settings from os.environ
 ## Things you might want to override anyway
 #######
 
+db_filename = '.db.json'
+
 ## TODO?: in the transport mode, make those inputable-at-registration?
 
 ## The short client identifier that will be used to mark messages as 'seen by
