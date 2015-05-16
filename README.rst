@@ -15,6 +15,8 @@ Known required packages in the terms of debian / ubuntu / alikes:
 
 python-dev
 
+In Gentoo install dev-python/xmpppy dev-python/imapclient dev-python/gevent dev-python/html2text
+
 
 == TODO ==
 
