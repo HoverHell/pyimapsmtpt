@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # coding: utf8
 
+import os
 from setuptools import setup
+
 
 version = "1.0.0"
 try:
@@ -14,8 +16,6 @@ except Exception:
     pass
 
 
-import os
-
 LONG_DESCRIPTION = """
 A daemon for exposing IMAP and SMTP server over XMPP.
 
@@ -24,8 +24,9 @@ A daemon for exposing IMAP and SMTP server over XMPP.
 
 try:
     LONG_DESCRIPTION = (
-        LONG_DESCRIPTION
-        + open(os.path.join(os.path.dirname(__file__), 'README.rst')).read())
+        LONG_DESCRIPTION +
+        open(os.path.join(os.path.dirname(__file__),
+                          'README.rst')).read())
 except Exception as _exc:
     print "Pkg-description error:", _exc
 
@@ -47,13 +48,8 @@ setup_kwargs = dict(
         'IMAPClient==0.12',
         'html2text>=2014.12.29',
         'xmpppy',
+        'atomicfile',
     ],
-    extras_require={
-        ## Things that are useful to simply have around:
-        'recommended': [
-            'atomicfile',
-        ],
-    },
     dependency_links=[
         'git+https://github.com/normanr/xmpppy.git@cae7df03e53b471e03fab7aa2f9e8efc5747d689#egg=xmpppy',
     ],

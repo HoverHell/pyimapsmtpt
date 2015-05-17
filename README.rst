@@ -1,29 +1,40 @@
 
-== Synopsis ==
+Synopsis
+========
 
 An xmpp transport (or bot, possibly to-be-done) that allows using IMAP+SSMTP
 (e.g. gmail's) from an XMPP client.
 
 
-== Dependencies ==
+Dependencies
+============
 
-Most are listed in requirements.txt
+Most are listed in the setup.py (use ``setup.py develop`` if you have virtuelanv).
 
 However, some of those might require compiling, which, in turn, requires several libraries.
 
-Known required packages in the terms of debian / ubuntu / alikes:
+Known required packages in the terms of debian / ubuntu / alikes: ``python-dev``.
 
-python-dev
+In Gentoo install ``dev-python/xmpppy dev-python/imapclient dev-python/gevent dev-python/html2text``.
+However, xmpppy might have to be of a very specific version (see setup.py).
 
-In Gentoo install dev-python/xmpppy dev-python/imapclient dev-python/gevent dev-python/html2text
+
+Usage
+=====
+
+ * Install dependencies
+ * Input your passwords and stuff in ``config.py`` (see ``config_example.py``).
+ * run ``python -m pyimapsmtpt.main``
 
 
-== TODO ==
+TODO
+====
 
 Use a better and more fresh XMPP library.
 
 
-== Prior works ==
+Prior works
+===========
 
 This codebase itself continues the pymailt codebase.
 
