@@ -58,31 +58,31 @@ class SimpleDB(UserDict):
     (if the file exists), and saves the data back when it is changed
     (instantly).  """
 
-    ## Flag to temporarily disable saving
+    # Flag to temporarily disable saving
     _nosave = False
 
     def __init__(self, filename, _ser=None, _load=True, _open_cm=None):
-        UserDict.__init__(self)  ## Just to honour it
+        UserDict.__init__(self)  # Just to honour it
         if _ser is None:
             _ser = {'dump': json.dump, 'load': json.load}
-        ## Allow specifying dumps/loads instead of dump/load
+        # Allow specifying dumps/loads instead of dump/load
         if 'dump' not in _ser:
             _ser = dict(_ser, dump=_dumps_to_dump(_ser['dumps']))
         if 'load' not in _ser:
             _ser = dict(_ser, dump=_loads_to_load(_ser['loads']))
-        ## ...
+        # ...
         self._ser = _ser
-        ## Prefer AtomicFile for writing if available.
+        # Prefer AtomicFile for writing if available.
         if _open_cm is None:
             try:
                 from atomicfile import AtomicFile
             except Exception:
-                ## Alas, nope
+                # Alas, nope
                 _open_cm = open
             else:
                 _open_cm = AtomicFile
         self._open_cm = _open_cm
-        ## ...
+        # ...
         self._filename = filename
         data = {}
         if _load:
@@ -115,7 +115,7 @@ class SimpleDB(UserDict):
             self[key] = failobj
             return failobj
 
-    ## Bonus functions: lazy get and setdefault
+    # Bonus functions: lazy get and setdefault
 
     def fsetdefault(self, key, failfunc=lambda: None):
         try:
@@ -142,7 +142,7 @@ class SimpleDB(UserDict):
         self[key] = val
         return val
 
-    ## Some things that should not be done
+    # Some things that should not be done
 
     def copy(self):
         raise Exception("Bad idea")
@@ -165,8 +165,8 @@ class SimpleDB(UserDict):
 
 
 def _child_wrapped(name):
-    """ A helper-wrapper for Subdict the call to dict(self, ...) and then
-    calls self.save() """
+    """ A helper-wrapper for Subdict: passes the call to dict(self, ...)
+    and then calls self.save() """
 
     def _wrapped(self, *ar, **kwa):
         method = getattr(dict, name)
@@ -178,9 +178,8 @@ def _child_wrapped(name):
     return _wrapped
 
 
-## This has to be a dict subclass (rather than UserDict) to be
-## JSON-serializable.  Note that using it is likely tricky.
-
+# This has to be a dict subclass (rather than UserDict) to be
+# JSON-serializable.  Note that using it is likely tricky.
 class Subdict(dict):
     """ Another dict subclass that can call parent.save() on write.
     Honours the '_nosave' attribute.
@@ -191,7 +190,7 @@ class Subdict(dict):
     >>> key = 'child'
     >>> import random
     >>> val = random.getrandbits(31)
-    >>> ## Same as db.subdict(key)
+    >>> # Same as db.subdict(key)
     >>> db[key] = Subdict(db.get(key) or {}, parent=db)
     >>> db[key]['something'] = val
     >>> db2 = SimpleDB(filename)
@@ -232,7 +231,7 @@ class SimpleDBDelayed(SimpleDB):
 
     def save(self):
         if self._nosave:
-            return  ## Honour the _nosave anyway
+            return  # Honour the _nosave anyway
         if self._save_waiter is None:
             import gevent
             self._log("Starting the waiter")
