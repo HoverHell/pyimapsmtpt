@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf8
 
-
+import os
 import sys
 import logging
 import email
@@ -39,6 +39,7 @@ _fix_imapclient_imaplib2()
 # Monkey-add the client id to the imapclient logging
 # ######
 def _imaplib_add_id_logging(logger, cls=imaplib.IMAP4_SSL):
+
     def _read_dbg(self, size):
         name = getattr(self, '_x_name', '')
         res = self.file.read(size)
@@ -52,6 +53,7 @@ def _imaplib_add_id_logging(logger, cls=imaplib.IMAP4_SSL):
         return res
 
     _send_orig = getattr(cls, '_send_orig', cls.send)
+
     def _send_dbg(self, data):
         name = getattr(self, '_x_name', '')
         logger.debug("SOCKET(%r) send: %r", name, data)
@@ -102,14 +104,14 @@ class IMAPReceiver(object):
     """
 
     # TODO: cleanup
-    sync_msg_limit = 15  # NOTE.
+    sync_msg_limit = 50  # NOTE.
     # Timeout for the IDLE command
     # 28 minutes, slightly below the RFC-recommended-maximum of 29 minutes
     idle_timeout = 28 * 60
     mailbox = 'INBOX'
     retry_working = None
     working = None
-    cli = idle_cli = mark_all_cli = None
+    cli = idle_cli = None
 
     def __init__(self, config, cli_kwa=None, mail_callback=None, db=None):
         """ ...
@@ -163,6 +165,8 @@ class IMAPReceiver(object):
             # # We are writing flags for no-local-state, alas.
             # readonly=1,
         )
+        # Save for further use:
+        cli._folderinfo = resp
         self.log.debug("imapcli(%r).select_folder: %r", name, resp)
         return cli
 
@@ -217,17 +221,55 @@ class IMAPReceiver(object):
         self.log.info("work()")
 
         last_uid = self.db.setdefault('last_uid', None)
+        last_uidvalidity = self.db.setdefault('last_uidvalidity', None)
         cli = self.get_client(name='cli', cached=True)
 
+        uidvalidity = cli._folderinfo.get('UIDVALIDITY')
+        # TODO: use something like datetime-based sync (or label-based
+        # sync) for these cases.
+        if not uidvalidity:
+            raise Exception("No UIDVALIDITY provided; support pending")
+        if last_uidvalidity and uidvalidity != last_uidvalidity:
+            raise Exception("Uidvalidity changed; support pending")
+
+        if not last_uidvalidity:
+            self.log.info("Saving new uidvalidity: %r", uidvalidity)
+            self.db['last_uidvalidity'] = uidvalidity
+
+        if not last_uid:
+            self.log.warning("Getting new last_uid")
+            uids = cli.search('ALL')
+            last_uid = max(uids)
+            self.db['last_uid'] = last_uid
+
         idle_cli = self.get_client(name='idle_cli', cached=True)
+        # # NOTE: trying with the same client as the sync one.
         self.log.info("work: idle_cli.idle()")
         idle_cli.idle()
         self.sync()  # Should use self.cli
-        self.log.info('idle_check for %r', self.idle_timeout)
-        resp = idle_cli.idle_check(timeout=self.idle_timeout)
-        self.log.debug('got idle resp: %r', resp)
-        resp = idle_cli.idle_done()
-        self.log.debug('got idle_done resp: %r', resp)
+        idle_cli_idle_timeout = 1
+        self.log.info('idle_cli idle_check for %r', idle_cli_idle_timeout)
+
+        # NOTE: short timeout idle_cli check
+        resp = cli.idle_check(timeout=idle_cli_idle_timeout)
+        self.log.debug('got idle_cli idle resp: %r', resp)
+        idone_resp = idle_cli.idle_done()
+        _, resp_from_done = idone_resp
+        self.log.debug('got idle_cli idle_done resp: %r', idone_resp)
+
+        if resp or resp_from_done:  # any events from either of the commands
+            # idle_cli got a notification; but, cli might not have it
+            # (dammit, GMail), so make it reconnect.
+            self.get_client(name='cli', cached=False)
+        else:
+            self.log.debug("cli idle check for %r", self.idle_timeout)
+            cli.idle()
+            resp = cli.idle_check(timeout=self.idle_timeout)
+            self.log.debug('got cli idle resp: %r', resp)
+            idone_resp = cli.idle_done()
+            self.log.debug('got cli idle_done resp: %r', idone_resp)
+
+        # here it should return into the loop, restart idle, sync-
 
     def sync(self, limit=True, process=True, cli=None, debug=False):
         """ ...
@@ -236,16 +278,33 @@ class IMAPReceiver(object):
         """
         self.log.info("sync()")
         cli = cli or self.get_client(name='cli', cached=True)
-        # TODO: filter out by internaldate > now - some_max_val ( SINCE ... )
-        msgids = cli.search('(UNKEYWORD %s)' % (self.seen_flag,))
-        # # Hopefully, the newest will be the last in the list.
-        # assert msgids == sorted(msgids)
-        self.log.info("SEARCH returned %d msgids", len(msgids))
-        msgids = list(reversed(msgids))
-        if limit is True:
-            msgids = msgids[:self.sync_msg_limit]  # NOTE
+        # cli = self.get_client(name='cli', cached=False)
+
+        last_uid = self.db['last_uid']
+        # NOTE: `+ 1` to avoid getting the message we had already
+        search_str = 'UID %d:*' % (last_uid + 1,)
+        self.log.debug("Search %r", search_str)
+        msgids = cli.search(search_str)
+        self.log.info("SEARCH %r returned %d msgids: %r",
+                      search_str, len(msgids), msgids)
+        # msgids = list(reversed(msgids))
+        msgids = sorted(msgids)
+        failmsgids = [msgid for msgid in msgids if msgid <= last_uid]
+        # # NOTE: last message uid will always be included even if it is lower.
+        # # http://stackoverflow.com/questions/9147424/#comment29989969_9148609
+        msgids = [msgid for msgid in msgids if msgid > last_uid]
+        if failmsgids:
+            self.log.info("SEARCH returned %d newer msgids",
+                          len(msgids))
+        #     self.log.error("msgids lower than the search requested: %r -> %r",
+        #                    search_str, failmsgids)
+
+        # When there are too much messages some will be skipped if
+        # this is enabled.
+        if limit is True and self.sync_msg_limit:
+            msgids = msgids[-self.sync_msg_limit:]  # NOTE
         elif limit:
-            msgids = msgids[:limit]
+            msgids = msgids[-limit:]
 
         dbgres = []
 
@@ -259,15 +318,19 @@ class IMAPReceiver(object):
                     self.handle_msg(
                         msg_content, msgid=msgid, msgids=msgids, message=message)
                 # NOTE: if handle_msg excepts, this will not be done, this way.
-                resp = cli.add_flags(msgid, self.seen_flag)
+                # resp = cli.add_flags(msgid, self.seen_flag)
+                if msgid > last_uid:
+                    last_uid = msgid
+                    self.log.debug("last_uid = %r", last_uid)
+                    self.db['last_uid'] = last_uid
                 if debug:
-                    dbgres.append(dict(msgid=msgid, message=message, flag_resp=resp))
-                self.log.debug("add_flags resp: %r", resp)
+                    dbgres.append(dict(msgid=msgid, message=message))
             except Exception as exc:
                 self.log.exception("Error handling msg: %r", exc)
         return dbgres
 
     def handle_msg(self, msg_content, **kwa):
+        """ Function to feed previously-not-seen messages into """
         # Storytime.
         # Apparently, IMAPClient decodes the message whenever possible;
         # however, email.message_from_string puts it into StringIO which
@@ -277,7 +340,6 @@ class IMAPReceiver(object):
         msg = email.message_from_string(msg_content)
 
         self.mail_callback(msg, msg_content=msg_content)
-
 
 
 def main(args=None):
@@ -294,6 +356,12 @@ def main(args=None):
 
     if args and 'mark_all' in args:
         return worker.mark_all_as_seen()
+
+    if os.environ.get('IPYNB'):
+        cli = worker.get_client()
+        import IPython
+        IPython.embed(banner1='`worker`, `cli`')
+        return worker
 
     worker.run_with_retry()
 
