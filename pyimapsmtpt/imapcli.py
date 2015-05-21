@@ -7,7 +7,6 @@ import logging
 import email
 import imaplib
 import imapclient
-import json
 from threading import Event
 
 from .common import to_bytes, config_email_utf8
@@ -16,12 +15,12 @@ from . import simpledb
 _log = logging.getLogger(__name__)
 
 
-#######
-## HAX: fix imapclient's fault
-## Apparently, mere presence of 'imaplib2' makes imapclient use it in place of
-## imaplib; however, a couple of things that are required of imaplib are not
-## present in imaplib2; so, put them there.
-#######
+# ######
+# HAX: fix imapclient's fault
+# Apparently, mere presence of 'imaplib2' makes imapclient use it in place of
+# imaplib; however, a couple of things that are required of imaplib are not
+# present in imaplib2; so, put them there.
+# ######
 
 def _fix_imapclient_imaplib2():
     try:
@@ -36,9 +35,9 @@ def _fix_imapclient_imaplib2():
 _fix_imapclient_imaplib2()
 
 
-#######
-## Monkey-add the client id to the imapclient logging
-#######
+# ######
+# Monkey-add the client id to the imapclient logging
+# ######
 def _imaplib_add_id_logging(logger, cls=imaplib.IMAP4_SSL):
     def _read_dbg(self, size):
         name = getattr(self, '_x_name', '')
@@ -73,7 +72,7 @@ def config_to_clikwa(config):
     else:
         port = getattr(config, 'imap_port', None)
         if port is None:
-            port = 993  ## The default, pretty much
+            port = 993  # The default, pretty much
 
     cli_kwa = dict(
         username=config.imap_username,
@@ -102,10 +101,10 @@ class IMAPReceiver(object):
     Stopping: `this.stop_event.set()`, wait a while.
     """
 
-    ## TODO: cleanup
-    sync_msg_limit = 15  ## NOTE.
-    ## Timeout for the IDLE command
-    ## 28 minutes, slightly below the RFC-recommended-maximum of 29 minutes
+    # TODO: cleanup
+    sync_msg_limit = 15  # NOTE.
+    # Timeout for the IDLE command
+    # 28 minutes, slightly below the RFC-recommended-maximum of 29 minutes
     idle_timeout = 28 * 60
     mailbox = 'INBOX'
     retry_working = None
@@ -149,19 +148,19 @@ class IMAPReceiver(object):
         self.log.debug("get_client(%r): creating", name)
         cli = get_imapcli(**cli_kwa)
 
-        ## Add the client name to the client for logging (for
-        ## _imaplib_add_id_logging)
-        ## NOTE: get_imapcli will do a bit of socket-talking before the
-        ## name is set, resulting in `SOCKET('')`
+        # Add the client name to the client for logging (for
+        # _imaplib_add_id_logging)
+        # NOTE: get_imapcli will do a bit of socket-talking before the
+        # name is set, resulting in `SOCKET('')`
         cli._x_name = name
         cli._imap._x_name = name
 
-        ## NOTE: done regardless of the 'cached' param.
+        # NOTE: done regardless of the 'cached' param.
         setattr(self, name, cli)
 
         resp = cli.select_folder(
             self.mailbox,
-            ## We are writing flags for no-local-state, alas.
+            # # We are writing flags for no-local-state, alas.
             # readonly=1,
         )
         self.log.debug("imapcli(%r).select_folder: %r", name, resp)
@@ -176,8 +175,8 @@ class IMAPReceiver(object):
             try:
                 self.run(pre_run=False)
             except imaplib.IMAP4.abort as exc:
-                ## `raise self.abort('socket error: EOF')`
-                ## In practice, that exception should've'been caught in the imapclient.py
+                # `raise self.abort('socket error: EOF')`
+                # In practice, that exception should've'been caught in the imapclient.py
                 self.log.exception("run() error 'abort': %r", exc)
                 self.log.info("Re-`run()`ning")
             except Exception as exc:
@@ -194,7 +193,7 @@ class IMAPReceiver(object):
     def run(self, pre_run=True, **kwa):
         if pre_run:
             self.pre_run(**kwa)
-        ## Prepare the imap clients here:
+        # Prepare the imap clients here:
         self.get_client()
         self.get_client(name='idle_cli')
 
@@ -209,7 +208,7 @@ class IMAPReceiver(object):
             if self.stop_event.isSet():
                 return
 
-            ## XXX: is extra reconnection handling necessary?
+            # XXX: is extra reconnection handling necessary?
             self.work()
 
     def work(self):
@@ -223,7 +222,7 @@ class IMAPReceiver(object):
         idle_cli = self.get_client(name='idle_cli', cached=True)
         self.log.info("work: idle_cli.idle()")
         idle_cli.idle()
-        self.sync()  ## Should use self.cli
+        self.sync()  # Should use self.cli
         self.log.info('idle_check for %r', self.idle_timeout)
         resp = idle_cli.idle_check(timeout=self.idle_timeout)
         self.log.debug('got idle resp: %r', resp)
@@ -237,14 +236,14 @@ class IMAPReceiver(object):
         """
         self.log.info("sync()")
         cli = cli or self.get_client(name='cli', cached=True)
-        ## TODO: filter out by internaldate > now - some_max_val ( SINCE ... )
+        # TODO: filter out by internaldate > now - some_max_val ( SINCE ... )
         msgids = cli.search('(UNKEYWORD %s)' % (self.seen_flag,))
-        ## Hopefully, the newest will be the last in the list.
+        # # Hopefully, the newest will be the last in the list.
         # assert msgids == sorted(msgids)
         self.log.info("SEARCH returned %d msgids", len(msgids))
         msgids = list(reversed(msgids))
         if limit is True:
-            msgids = msgids[:self.sync_msg_limit]  ## NOTE
+            msgids = msgids[:self.sync_msg_limit]  # NOTE
         elif limit:
             msgids = msgids[:limit]
 
@@ -259,7 +258,7 @@ class IMAPReceiver(object):
                 if process:
                     self.handle_msg(
                         msg_content, msgid=msgid, msgids=msgids, message=message)
-                ## NOTE: if handle_msg excepts, this will not be done, this way.
+                # NOTE: if handle_msg excepts, this will not be done, this way.
                 resp = cli.add_flags(msgid, self.seen_flag)
                 if debug:
                     dbgres.append(dict(msgid=msgid, message=message, flag_resp=resp))
@@ -269,11 +268,11 @@ class IMAPReceiver(object):
         return dbgres
 
     def handle_msg(self, msg_content, **kwa):
-        ## Storytime.
-        ## Apparently, IMAPClient decodes the message whenever possible;
-        ## however, email.message_from_string puts it into StringIO which
-        ## expects bytes() and thus tries to encode the unicode string into
-        ## ascii and thus fails.
+        # Storytime.
+        # Apparently, IMAPClient decodes the message whenever possible;
+        # however, email.message_from_string puts it into StringIO which
+        # expects bytes() and thus tries to encode the unicode string into
+        # ascii and thus fails.
         msg_content = to_bytes(msg_content)
         msg = email.message_from_string(msg_content)
 
