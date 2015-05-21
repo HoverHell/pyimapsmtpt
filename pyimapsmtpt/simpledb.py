@@ -24,7 +24,9 @@ def _dumps_to_dump(dumps_func):
     @functools.wraps(dumps_func)
     def _wrapped_dump(val, fo, *ar, **kwa):
         data = dumps_func(val, *ar, **kwa)
-        return fo.write(data)
+        fo.write(data)
+        # Proper readable files have newlines at the end, y'know
+        fo.write('\n')
 
     return _wrapped_dump
 
