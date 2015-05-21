@@ -1,6 +1,7 @@
 
-WARNING: this is not a currently working project. Although some older
-commits are probably somewhat-usable.
+WARNING: this is a work-in-progress.
+
+TODO: message-id (e-mail) <-> conversation-id (in an xmpp resource) conversion
 
 Synopsis
 ========
