@@ -1,4 +1,7 @@
 
+WARNING: this is not a currently working project. Although some older
+commits are probably somewhat-usable.
+
 Synopsis
 ========
 
